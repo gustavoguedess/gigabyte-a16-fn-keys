@@ -1,0 +1,17 @@
+#!/bin/sh
+# Airplane mode: if any radio is on, turn all of them off; otherwise turn them all on.
+# Meant for the Fn+F10 shortcut (F14 / Launch 5).
+if rfkill -n -o SOFT list | grep -q '^unblocked'; then
+	rfkill block all
+	icon=network-flightmode-on
+	msg="Airplane mode on"
+else
+	rfkill unblock all
+	icon=network-flightmode-off
+	msg="Airplane mode off"
+fi
+
+# On-screen display (Plasma OSD), like the touchpad one; a notification elsewhere.
+gdbus call --session --dest org.kde.plasmashell --object-path /org/kde/osdService \
+	--method org.kde.osdService.showText "$icon" "$msg" >/dev/null 2>&1 ||
+	notify-send -a "Airplane mode" -i "$icon" -t 1500 "$msg"

@@ -1,0 +1,5 @@
+build/
+ext/
+__pycache__/
+*.log
+!docs/captures/*.log

@@ -1,0 +1,148 @@
+#!/usr/bin/env python3
+"""Sets up (or removes) the KDE Plasma shortcuts for the Gigabyte A16 Fn keys.
+
+Talks to kglobalaccel over D-Bus, so changes apply right away, no re-login.
+Only adds the driver's keys: shortcuts the user already has are kept.
+
+Usage: a16-kde-shortcuts install <path to a16-airplane-mode>
+       a16-kde-shortcuts uninstall
+"""
+import ast
+import os
+import re
+import subprocess
+import sys
+
+# Qt::Key_* of the free keys the driver emits
+KEY_TOOLS = 0x10000F1    # Fn+F8  (F13)
+KEY_LAUNCH5 = 0x10000A7  # Fn+F10 (F14)
+KEY_LAUNCH8 = 0x10000AA  # Fn+F7  (F17)
+
+AIRPLANE_COMPONENT = "net.local.a16-airplane-mode.desktop"
+AIRPLANE_ID = [AIRPLANE_COMPONENT, "_launch", "Airplane Mode", "Airplane Mode"]
+
+# (actionId, key)
+SHORTCUTS = [
+    (["org_kde_powerdevil", "Turn Off Screen", "Power Management", "Turn Off Screen"], KEY_TOOLS),
+    (["org_kde_powerdevil", "powerProfile", "Power Management", "Switch Power Profile"], KEY_LAUNCH8),
+    (AIRPLANE_ID, KEY_LAUNCH5),
+]
+
+# Default owner of Tools in KDE, which may give the key up
+SYSTEMSETTINGS_ID = ["systemsettings.desktop", "_launch", "", ""]
+
+DATA_HOME = os.environ.get("XDG_DATA_HOME", os.path.expanduser("~/.local/share"))
+STATE_HOME = os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state"))
+DESKTOP_FILE = os.path.join(DATA_HOME, "applications", AIRPLANE_COMPONENT)
+TOOLS_STATE = os.path.join(STATE_HOME, "gigabyte-a16-fn", "systemsettings-tools")
+
+
+def kga(method, *args):
+    out = subprocess.run(
+        ["gdbus", "call", "--session", "--dest", "org.kde.kglobalaccel",
+         "--object-path", "/kglobalaccel", "--method", f"org.kde.KGlobalAccel.{method}",
+         *args],
+        check=True, capture_output=True, text=True).stdout.strip()
+    # strip GVariant type annotations such as "@as []"
+    out = re.sub(r"@[a-z()]+ ", "", out)
+    return ast.literal_eval(out) if out else ()
+
+
+def gv_ids(action_id):
+    return "[" + ",".join(repr(s) for s in action_id) + "]"
+
+
+def gv_keys(keys):
+    if not keys:
+        return "@a(ai) []"
+    return "[" + ",".join(f"([{k},0,0,0],)" for k in keys) + "]"
+
+
+def get_keys(action_id):
+    (seqs,) = kga("shortcutKeys", gv_ids(action_id))
+    return [seq[0][0] for seq in seqs]
+
+
+def set_keys(action_id, keys):
+    kga("doRegister", gv_ids(action_id))
+    kga("setForeignShortcutKeys", gv_ids(action_id), gv_keys(keys))
+
+
+def owner(key):
+    (ids,) = kga("action", str(key))
+    return list(ids[:2]) if ids else ["", ""]
+
+
+def write_desktop_file(command):
+    os.makedirs(os.path.dirname(DESKTOP_FILE), exist_ok=True)
+    with open(DESKTOP_FILE, "w") as f:
+        f.write("[Desktop Entry]\n"
+                f"Exec={command}\n"
+                "Name=Airplane Mode\n"
+                "Name[pt_BR]=Modo avião\n"
+                "NoDisplay=true\n"
+                "StartupNotify=false\n"
+                "Type=Application\n"
+                "X-KDE-GlobalAccel-CommandShortcut=true\n")
+
+
+def free_key(key, action_id):
+    """Frees the key for action_id. Returns False if another shortcut uses it."""
+    current = owner(key)
+    if not current[0] or current == action_id[:2]:
+        return True
+    if current == SYSTEMSETTINGS_ID[:2] and key == KEY_TOOLS:
+        set_keys(SYSTEMSETTINGS_ID, [k for k in get_keys(SYSTEMSETTINGS_ID) if k != key])
+        os.makedirs(os.path.dirname(TOOLS_STATE), exist_ok=True)
+        open(TOOLS_STATE, "w").close()
+        print("  Tools no longer opens System Settings")
+        return True
+    print(f"  key already used by {current[0]} / {current[1]}: skipped, set it up manually")
+    return False
+
+
+def install(command):
+    write_desktop_file(command)
+    for action_id, key in SHORTCUTS:
+        print(f"{action_id[2]}: {action_id[3]}")
+        if not free_key(key, action_id):
+            continue
+        keys = get_keys(action_id)
+        if key not in keys:
+            set_keys(action_id, keys + [key])
+        print("  ok")
+
+
+def uninstall():
+    for action_id, key in SHORTCUTS:
+        keys = get_keys(action_id)
+        if key in keys:
+            set_keys(action_id, [k for k in keys if k != key])
+    kga("unregister", repr(AIRPLANE_COMPONENT), "'_launch'")
+    if os.path.exists(DESKTOP_FILE):
+        os.remove(DESKTOP_FILE)
+    if os.path.exists(TOOLS_STATE):
+        if not owner(KEY_TOOLS)[0]:
+            set_keys(SYSTEMSETTINGS_ID, get_keys(SYSTEMSETTINGS_ID) + [KEY_TOOLS])
+        os.remove(TOOLS_STATE)
+    print("KDE shortcuts removed")
+
+
+def main():
+    try:
+        kga("allMainComponents")
+    except (OSError, subprocess.CalledProcessError):
+        print("KDE Plasma (kglobalaccel) not found: shortcuts not set up")
+        return 0
+
+    if len(sys.argv) == 3 and sys.argv[1] == "install":
+        install(sys.argv[2])
+    elif len(sys.argv) == 2 and sys.argv[1] == "uninstall":
+        uninstall()
+    else:
+        sys.exit(__doc__)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -41,8 +41,8 @@ There is no direct fan control on Linux for this model. Fn+F7 switches the power
 ## Install
 
 ```sh
-git clone <url of this repository> gigabyte-a16-fn
-cd gigabyte-a16-fn
+git clone https://github.com/gustavoguedess/gigabyte-a16-fn-keys.git
+cd gigabyte-a16-fn-keys
 ./install.sh
 ```
 

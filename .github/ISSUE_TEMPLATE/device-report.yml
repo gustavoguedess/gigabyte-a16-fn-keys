@@ -1,0 +1,45 @@
+name: Device report
+description: Tell us whether the driver works on your laptop
+title: "Device report: GAMING A16 "
+labels: ["device report"]
+body:
+  - type: input
+    id: model
+    attributes:
+      label: Laptop model
+      description: As printed on the sticker or by `cat /sys/class/dmi/id/product_name`
+      placeholder: GIGABYTE GAMING A16 3WH
+    validations:
+      required: true
+  - type: input
+    id: usb
+    attributes:
+      label: Keyboard USB ID
+      description: Output of `lsusb | grep -i 0414`
+      placeholder: "Bus 001 Device 003: ID 0414:8105 GIGABYTE USB-HID Keyboard"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: Distribution, kernel and desktop
+      description: "`uname -r` and your desktop (KDE, GNOME…)"
+      placeholder: Fedora 44, 7.2.11, GNOME 49
+    validations:
+      required: true
+  - type: checkboxes
+    id: keys
+    attributes:
+      label: Keys that work with the driver
+      options:
+        - label: Fn alone no longer mutes the microphone
+        - label: Fn+F4 mutes the microphone
+        - label: Fn+F7 (power profile)
+        - label: Fn+F8 (screen off)
+        - label: Fn+F10 (airplane mode)
+        - label: G no longer types `=`
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything that did not work, install errors, or the output of `sudo python3 tools/watch_keys.py` while pressing the keys.
